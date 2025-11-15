@@ -1,10 +1,11 @@
-# service-user/app.py
+# service-user/src/app.py (Versi Gabungan)
 
 import os
 import datetime
 from flask import Flask, request
 from flask_restx import Api, Resource, fields
 import jwt # PyJWT
+import requests # Pastikan ini ada di requirements.txt
 
 # Import dari file kita sendiri
 from config import Config
@@ -38,7 +39,9 @@ def get_user_id_from_token():
         api.abort(401, f'Token tidak valid (invalid). Error: {str(e)}')
 
 # --- 2. MODEL API (Flask-RESTX untuk Validasi Input) ---
-user_ns = api.namespace('users', description='Operasi Registrasi dan Login')
+
+# Namespace 'users' sekarang menangani SEMUA operasi pengguna
+user_ns = api.namespace('users', description='Operasi Pengguna (Registrasi, Login, Profil)')
 
 user_register_model = api.model('UserRegisterInput', {
     'name': fields.String(required=True, description='Nama lengkap'),
@@ -50,6 +53,12 @@ user_register_model = api.model('UserRegisterInput', {
 user_login_model = api.model('UserLoginInput', {
     'email': fields.String(required=True, description='Alamat email'),
     'password': fields.String(required=True, description='Password')
+})
+
+# Model untuk update profil (tidak wajib ganti semua)
+user_update_model = api.model('UserUpdateInput', {
+    'name': fields.String(description='Nama lengkap baru'),
+    'phone_number': fields.String(description='Nomor HP baru')
 })
 
 # --- 3. ENDPOINTS API (Logika Bisnis) ---
@@ -73,13 +82,29 @@ class UserRegister(Resource):
             db.session.add(new_user)
             db.session.commit()
             
-            # TODO (Nanti): Panggil service-wallet untuk buat dompet
-            # requests.post('http://localhost:3002/internal/wallets', json={'user_id': new_user.id})
+            # --- Memanggil Service-Wallet ---
+            # Kita aktifkan TODO ini
+            try:
+                wallet_url = f"{app.config['WALLET_SERVICE_URL']}/internal"
+                wallet_payload = {'user_id': new_user.id}
+                response = requests.post(wallet_url, json=wallet_payload, timeout=5)
+                response.raise_for_status() # Error jika status code bukan 2xx
+                print(f"Wallet berhasil dibuat untuk user {new_user.id}")
+            except requests.exceptions.RequestException as e:
+                # Jika service wallet gagal, kita harus membatalkan registrasi user (Rollback)
+                db.session.delete(new_user)
+                db.session.commit()
+                print(f"Gagal memanggil wallet-service: {e}")
+                api.abort(503, 'Layanan Wallet tidak tersedia. Registrasi dibatalkan.')
+            # ---------------------------------
             
             return {'message': 'User berhasil dibuat', 'user': new_user.to_dict()}, 201
         except Exception as e:
             db.session.rollback()
-            return {'message': 'Gagal membuat user. Email atau No HP mungkin sudah ada.', 'error': str(e)}, 400
+            # Cek jika ini error duplikasi
+            if 'Duplicate entry' in str(e):
+                return {'message': 'Gagal membuat user. Email atau Nomor HP sudah terdaftar.'}, 409
+            return {'message': 'Gagal membuat user.', 'error': str(e)}, 400
 
 @user_ns.route('/login')
 class UserLogin(Resource):
@@ -89,7 +114,7 @@ class UserLogin(Resource):
         data = api.payload
         user = User.query.filter_by(email=data['email']).first()
         
-        if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+        if user and user.status == 'active' and bcrypt.check_password_hash(user.password_hash, data['password']):
             token = jwt.encode(
                 {
                     'user_id': user.id,
@@ -100,44 +125,37 @@ class UserLogin(Resource):
             )
             return {'message': 'Login berhasil', 'token': token}, 200
         else:
-            return {'message': 'Login gagal. Email atau password salah.'}, 401
+            return {'message': 'Login gagal. Email, password salah, atau akun ditutup.'}, 401
 
-# Model untuk update profil (tidak wajib ganti semua)
-user_update_model = api.model('UserUpdateInput', {
-    'name': fields.String(description='Nama lengkap baru'),
-    'phone_number': fields.String(description='Nomor HP baru')
-    # Email & Password biasanya punya endpoint khusus karena lebih sensitif
-})
 
-# Namespace baru untuk operasi yang butuh login
-me_ns = api.namespace('me', description='Operasi Profil Saya (Butuh Login/Token)')
-
-@me_ns.route('/')
+# --- (INI PERUBAHANNYA) ---
+# Endpoint /me sekarang ada di dalam user_ns
+@user_ns.route('/me')
 class MyProfile(Resource):
     
-    @me_ns.doc('get_my_profile', security='apiKey') # 'security' menandakan ini butuh token
+    @user_ns.doc('get_my_profile', security='apiKey') # 'security' menandakan ini butuh token
     def get(self):
-        """(R)EAD: Mendapatkan profil saya sendiri"""
+        """(R)EAD: Mendapatkan profil saya sendiri (Butuh Token)"""
         try:
             # Panggil helper untuk dapat ID user dari token
             user_id = get_user_id_from_token() 
             user = User.query.get(user_id)
-            if not user:
-                return {'message': 'User tidak ditemukan'}, 404
+            if not user or user.status == 'closed':
+                return {'message': 'User tidak ditemukan atau ditutup'}, 404
             return user.to_dict(), 200
         except Exception as e:
             # Ini akan menangkap error 401 dari helper
             return {'message': str(e)}, 401
 
-    @me_ns.doc('update_my_profile', security='apiKey')
-    @me_ns.expect(user_update_model)
+    @user_ns.doc('update_my_profile', security='apiKey')
+    @user_ns.expect(user_update_model)
     def put(self):
-        """(U)PDATE: Memperbarui profil saya (Nama atau No. HP)"""
+        """(U)PDATE: Memperbarui profil saya (Butuh Token)"""
         try:
             user_id = get_user_id_from_token()
             user = User.query.get(user_id)
-            if not user:
-                return {'message': 'User tidak ditemukan'}, 404
+            if not user or user.status == 'closed':
+                return {'message': 'User tidak ditemukan atau ditutup'}, 404
             
             data = api.payload
             
@@ -157,22 +175,34 @@ class MyProfile(Resource):
             db.session.rollback()
             return {'message': str(e)}, 401
 
-    @me_ns.doc('delete_my_profile', security='apiKey')
+    @user_ns.doc('delete_my_profile', security='apiKey')
     def delete(self):
-        """(D)ELETE: Menutup akun saya"""
+        """(D)ELETE: Menutup akun saya (Soft Delete) (Butuh Token)"""
         try:
             user_id = get_user_id_from_token()
             user = User.query.get(user_id)
-            if not user:
-                return {'message': 'User tidak ditemukan'}, 404
+            if not user or user.status == 'closed':
+                return {'message': 'User tidak ditemukan atau sudah ditutup'}, 404
             
-            # TODO (Nanti): Panggil service-wallet & service-payee untuk
-            # menghapus data terkait sebelum user dihapus total.
+            # --- Memanggil Service-Wallet untuk menutup wallet ---
+            try:
+                # Kita panggil service wallet untuk menutup wallet juga
+                wallet_url = f"{app.config['WALLET_SERVICE_URL']}/internal/by-user/{user_id}/close"
+                response = requests.delete(wallet_url, timeout=5)
+                # Kita tidak pakai raise_for_status() agar proses delete user tetap jalan
+                # walaupun wallet-service error (opsional)
+                print(f"Response dari wallet-service: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                print(f"Gagal memanggil wallet-service saat tutup akun: {e}")
+                # Kita bisa pilih untuk gagalkan proses, atau lanjut saja
+                # api.abort(503, 'Layanan Wallet tidak tersedia saat coba tutup akun.')
+            # ----------------------------------------------------
+
+            # Soft Delete: Ganti statusnya
+            user.status = 'closed'
             
-            # Untuk sekarang, kita hapus langsung
-            db.session.delete(user)
             db.session.commit()
-            return {'message': f'User {user.name} berhasil dihapus.'}, 200
+            return {'message': f'User {user.name} berhasil ditutup (soft delete).'}, 200
         except Exception as e:
             db.session.rollback()
             return {'message': str(e)}, 401
@@ -181,7 +211,7 @@ class MyProfile(Resource):
 class UserInternalByPhone(Resource):
     def get(self, phone):
         """(INTERNAL) Mendapatkan data user berdasarkan nomor HP"""
-        user = User.query.filter_by(phone_number=phone).first()
+        user = User.query.filter_by(phone_number=phone, status='active').first()
         if user:
             return user.to_dict(), 200
         else:
