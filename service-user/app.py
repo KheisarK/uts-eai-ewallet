@@ -1,77 +1,65 @@
+# service-user/app.py
+
 import os
 import datetime
-from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
+from flask import Flask, request
 from flask_restx import Api, Resource, fields
-from flask_bcrypt import Bcrypt
 import jwt # PyJWT
 
-# --- 1. INISIALISASI & KONFIGURASI ---
+# Import dari file kita sendiri
+from config import Config
+from models import db, bcrypt, User
+
+# --- 1. INISIALISASI APLIKASI ---
 app = Flask(__name__)
-CORS(app)
+app.config.from_object(Config) # Muat konfigurasi dari config.py
 
-# --- KONFIGURASI XAMPP MYSQL ---
-# Ganti 'root' jika user Anda berbeda.
-# KOSONGKAN 'password' jika XAMPP Anda tidak pakai password (default).
-# Pastikan nama database 'db_users' sesuai dengan yang Anda buat.
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost:3306/db_users'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Kunci rahasia untuk JWT. Ganti ini di produksi.
-app.config['SECRET_KEY'] = 'ini-rahasia-banget-dan-harus-diganti-nanti'
-
-# Inisialisasi ekstensi
-db = SQLAlchemy(app)
-bcrypt = Bcrypt(app)
+# Inisialisasi ekstensi DENGAN aplikasi
+db.init_app(app)
+bcrypt.init_app(app)
 api = Api(app, 
           doc='/api-docs/', 
           title='User Service API', 
           description='Layanan untuk mengelola User, Registrasi, dan Login.')
 
-# --- 2. MODEL DATABASE (SQLAlchemy) ---
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    phone_number = db.Column(db.String(20), unique=True, nullable=False)
+# Fungsi ini untuk mengambil user_id dari token yang dikirim di header
+def get_user_id_from_token():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        api.abort(401, 'Token otentikasi tidak ada (missing).')
     
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'email': self.email,
-            'phone_number': self.phone_number
-        }
+    try:
+        token = auth_header.split(" ")[1] # Ambil token dari "Bearer <token>"
+        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return data['user_id']
+    except jwt.ExpiredSignatureError:
+        api.abort(401, 'Token sudah kedaluwarsa (expired).')
+    except Exception as e:
+        api.abort(401, f'Token tidak valid (invalid). Error: {str(e)}')
 
-# --- 3. MODEL API (Flask-RESTX untuk Validasi Input) ---
+# --- 2. MODEL API (Flask-RESTX untuk Validasi Input) ---
 user_ns = api.namespace('users', description='Operasi Registrasi dan Login')
 
-# Model untuk input registrasi
 user_register_model = api.model('UserRegisterInput', {
     'name': fields.String(required=True, description='Nama lengkap'),
     'email': fields.String(required=True, description='Alamat email'),
     'password': fields.String(required=True, description='Password'),
-    'phone_number': fields.String(required=True, description='Nomor HP (cth: 0812...)')
+    'phone_number': fields.String(required=True, description='Nomor HP')
 })
 
-# Model untuk input login
 user_login_model = api.model('UserLoginInput', {
     'email': fields.String(required=True, description='Alamat email'),
     'password': fields.String(required=True, description='Password')
 })
 
-# --- 4. ENDPOINTS API ---
+# --- 3. ENDPOINTS API (Logika Bisnis) ---
 
-# Endpoint untuk Registrasi
 @user_ns.route('/register')
 class UserRegister(Resource):
     @user_ns.expect(user_register_model)
     def post(self):
         """Membuat user baru (Registrasi)"""
         data = api.payload
-        
-        # Hash password sebelum disimpan
         hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
         
         new_user = User(
@@ -85,16 +73,14 @@ class UserRegister(Resource):
             db.session.add(new_user)
             db.session.commit()
             
-            # (Tambahan - Alur Komunikasi Antar Layanan)
-            # Di sini kita nanti akan memanggil service-wallet untuk membuatkan dompet
-            # Untuk sekarang, kita biarkan dulu.
+            # TODO (Nanti): Panggil service-wallet untuk buat dompet
+            # requests.post('http://localhost:3002/internal/wallets', json={'user_id': new_user.id})
             
             return {'message': 'User berhasil dibuat', 'user': new_user.to_dict()}, 201
         except Exception as e:
             db.session.rollback()
             return {'message': 'Gagal membuat user. Email atau No HP mungkin sudah ada.', 'error': str(e)}, 400
 
-# Endpoint untuk Login
 @user_ns.route('/login')
 class UserLogin(Resource):
     @user_ns.expect(user_login_model)
@@ -104,11 +90,10 @@ class UserLogin(Resource):
         user = User.query.filter_by(email=data['email']).first()
         
         if user and bcrypt.check_password_hash(user.password_hash, data['password']):
-            # Password cocok, buat token
             token = jwt.encode(
                 {
                     'user_id': user.id,
-                    'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24) # Token berlaku 24 jam
+                    'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
                 },
                 app.config['SECRET_KEY'],
                 algorithm='HS256'
@@ -117,8 +102,81 @@ class UserLogin(Resource):
         else:
             return {'message': 'Login gagal. Email atau password salah.'}, 401
 
-# Endpoint INTERNAL (Untuk dipanggil oleh service lain, BUKAN oleh frontend)
-# Ini adalah endpoint yang akan dipanggil oleh 'service-transaction'
+# Model untuk update profil (tidak wajib ganti semua)
+user_update_model = api.model('UserUpdateInput', {
+    'name': fields.String(description='Nama lengkap baru'),
+    'phone_number': fields.String(description='Nomor HP baru')
+    # Email & Password biasanya punya endpoint khusus karena lebih sensitif
+})
+
+# Namespace baru untuk operasi yang butuh login
+me_ns = api.namespace('me', description='Operasi Profil Saya (Butuh Login/Token)')
+
+@me_ns.route('/')
+class MyProfile(Resource):
+    
+    @me_ns.doc('get_my_profile', security='apiKey') # 'security' menandakan ini butuh token
+    def get(self):
+        """(R)EAD: Mendapatkan profil saya sendiri"""
+        try:
+            # Panggil helper untuk dapat ID user dari token
+            user_id = get_user_id_from_token() 
+            user = User.query.get(user_id)
+            if not user:
+                return {'message': 'User tidak ditemukan'}, 404
+            return user.to_dict(), 200
+        except Exception as e:
+            # Ini akan menangkap error 401 dari helper
+            return {'message': str(e)}, 401
+
+    @me_ns.doc('update_my_profile', security='apiKey')
+    @me_ns.expect(user_update_model)
+    def put(self):
+        """(U)PDATE: Memperbarui profil saya (Nama atau No. HP)"""
+        try:
+            user_id = get_user_id_from_token()
+            user = User.query.get(user_id)
+            if not user:
+                return {'message': 'User tidak ditemukan'}, 404
+            
+            data = api.payload
+            
+            # Cek duplikasi no. HP jika diubah
+            if 'phone_number' in data:
+                existing = User.query.filter(User.phone_number == data['phone_number'], User.id != user_id).first()
+                if existing:
+                    return {'message': 'Nomor HP sudah dipakai user lain.'}, 400
+                user.phone_number = data['phone_number']
+
+            if 'name' in data:
+                user.name = data['name']
+            
+            db.session.commit()
+            return {'message': 'Profil berhasil diperbarui', 'user': user.to_dict()}, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'message': str(e)}, 401
+
+    @me_ns.doc('delete_my_profile', security='apiKey')
+    def delete(self):
+        """(D)ELETE: Menutup akun saya"""
+        try:
+            user_id = get_user_id_from_token()
+            user = User.query.get(user_id)
+            if not user:
+                return {'message': 'User tidak ditemukan'}, 404
+            
+            # TODO (Nanti): Panggil service-wallet & service-payee untuk
+            # menghapus data terkait sebelum user dihapus total.
+            
+            # Untuk sekarang, kita hapus langsung
+            db.session.delete(user)
+            db.session.commit()
+            return {'message': f'User {user.name} berhasil dihapus.'}, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'message': str(e)}, 401
+
 @user_ns.route('/internal/by-phone/<string:phone>')
 class UserInternalByPhone(Resource):
     def get(self, phone):
@@ -129,10 +187,9 @@ class UserInternalByPhone(Resource):
         else:
             return {'message': 'User tidak ditemukan'}, 404
 
-# --- 5. BUAT TABEL & JALANKAN SERVER ---
+# --- 4. BUAT TABEL & JALANKAN SERVER ---
 with app.app_context():
-    # Ini akan membuat tabel 'user' di database 'db_users'
-    # jika tabelnya belum ada.
+    # Buat tabel jika belum ada
     db.create_all()
 
 if __name__ == '__main__':
