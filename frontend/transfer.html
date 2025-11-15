@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head><title>Transfer Saldo</title></head>
+<body>
+<h2>Transfer Saldo</h2>
+
+<input id="wallet_to" placeholder="ID Wallet Tujuan"><br><br>
+<input id="amount" type="number" placeholder="Jumlah"><br><br>
+
+<button onclick="transfer()">Kirim</button><br><br>
+
+<a href="dashboard.html">Kembali</a>
+
+<script src="js/api.js"></script>
+<script>
+async function transfer(){
+    const token = localStorage.getItem("token");
+
+    try {
+        await createTransaction(token, wallet_to.value, Number(amount.value));
+        alert("Transfer berhasil!");
+    } catch(err){
+        alert("Gagal: " + err.message);
+    }
+}
+</script>
+</body>
+</html>

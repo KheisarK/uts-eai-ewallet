@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register</title>
+</head>
+<body>
+<h2>Register</h2>
+
+<form id="registerForm">
+    <input type="text" id="name" placeholder="Nama" required><br>
+    <input type="email" id="email" placeholder="Email" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <input type="text" id="phone_number" placeholder="Nomor HP" required><br>
+    <button type="submit">Register</button>
+</form>
+
+<p id="message"></p>
+
+<script>
+document.getElementById("registerForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    let payload = {
+        name: document.getElementById("name").value,
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value,
+        phone_number: document.getElementById("phone_number").value
+    };
+
+    try {
+        let response = await fetch("http://localhost:3001/users/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        let data = await response.json();
+
+        if (!response.ok) {
+            document.getElementById("message").innerText = "Gagal: " + data.message;
+            return;
+        }
+
+        alert("Registrasi berhasil!");
+        window.location.href = "login.html";
+
+    } catch (err) {
+        document.getElementById("message").innerText = "Gagal: Server tidak mengembalikan JSON";
+    }
+});
+</script>
+
+</body>
+</html>

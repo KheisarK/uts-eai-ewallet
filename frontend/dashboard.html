@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            padding: 20px;
+        }
+        .card {
+            max-width: 450px;
+            background: white;
+            padding: 20px;
+            margin: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        a {
+            display: block;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            margin-top: 10px;
+            text-align: center;
+            border-radius: 5px;
+            text-decoration: none;
+        }
+        a.logout {
+            background: #dc3545;
+        }
+        a:hover {
+            opacity: 0.9;
+        }
+        .label {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Dashboard</h2>
+
+    <p><span class="label">Nama:</span> <span id="name"></span></p>
+    <p><span class="label">Email:</span> <span id="email"></span></p>
+    <p><span class="label">Saldo Wallet:</span> Rp <span id="balance"></span></p>
+
+    <a href="wallet.html">Detail Wallet</a>
+    <a href="transactions.html">Riwayat Transaksi</a>
+    <a href="topup.html">Top Up</a>
+    <a href="transfer.html">Transfer</a>
+    <a href="profile.html">Edit Profile</a>
+    <a class="logout" href="#" id="logoutBtn">Logout</a>
+</div>
+
+<script type="module">
+import { getProfile, getMyWallet } from "/js/api.js"; // file api.js di folder sama
+
+async function loadDashboard() {
+    const token = localStorage.getItem("token");
+    if (!token) return window.location.href = "login.html";
+
+    try {
+        const profile = await getProfile(token); // request ke service-user 3001
+        const wallet = await getMyWallet(token);  // request ke service-wallet 3002
+
+        document.getElementById("name").innerText = profile.name;
+        document.getElementById("email").innerText = profile.email;
+        document.getElementById("balance").innerText = wallet.balance ?? 0;
+
+    } catch (err) {
+        console.error(err); // tampilkan error di console
+        alert("Gagal memuat dashboard. Silakan login ulang.");
+        localStorage.removeItem("token");
+        window.location.href = "login.html";
+    }
+}
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+    localStorage.removeItem("token");
+    window.location.href = "login.html";
+});
+
+loadDashboard();
+</script>
+
+
+
+</body>
+</html>

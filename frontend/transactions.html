@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><title>Transaksi Saya</title></head>
+<body>
+<h2>Riwayat Transaksi</h2>
+<div id="list"></div>
+
+<a href="dashboard.html">Kembali</a>
+
+<script src="js/api.js"></script>
+<script>
+async function loadTx(){
+    const token = localStorage.getItem("token");
+    if (!token) return location.href="login.html";
+
+    const txs = await getMyTransactions(token);
+    list.innerHTML = "";
+
+    txs.forEach(t => {
+        list.innerHTML += `<p>
+            <b>ID:</b> ${t.id} |
+            <b>Amount:</b> ${t.amount} |
+            <b>Tanggal:</b> ${t.created_at}
+        </p>`;
+    })
+}
+loadTx();
+</script>
+</body>
+</html>

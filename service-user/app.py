@@ -6,6 +6,7 @@ from flask import Flask, request
 from flask_restx import Api, Resource, fields
 import jwt # PyJWT
 import requests # Pastikan ini ada di requirements.txt
+from flask_cors import CORS
 
 # Import dari file kita sendiri
 from config import Config
@@ -14,6 +15,7 @@ from models import db, bcrypt, User
 # --- 1. INISIALISASI APLIKASI ---
 app = Flask(__name__)
 app.config.from_object(Config) # Muat konfigurasi dari config.py
+CORS(app)
 
 # Inisialisasi ekstensi DENGAN aplikasi
 db.init_app(app)

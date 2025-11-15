@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head><title>Edit Profile</title></head>
+<body>
+<h2>Edit Profile</h2>
+
+<input id="name" placeholder="Nama Baru"><br><br>
+<button onclick="save()">Simpan</button><br><br>
+
+<a href="dashboard.html">Kembali</a>
+
+<script src="js/api.js"></script>
+<script>
+async function save(){
+    const token = localStorage.getItem("token");
+
+    try {
+        await updateProfile(token, name.value);
+        alert("Profil berhasil diperbarui");
+        window.location="dashboard.html";
+    } catch(err){
+        alert("Gagal: " + err.message);
+    }
+}
+</script>
+</body>
+</html>

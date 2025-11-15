@@ -1,6 +1,7 @@
 # service-transaction/app.py
 
 from flask import Flask, request
+from flask_cors import CORS
 from flask_restx import Api, Resource, fields
 from decimal import Decimal
 import requests # Untuk memanggil API lain
@@ -12,6 +13,7 @@ from models import db, Transaction
 # --- 1. INISIALISASI APLIKASI ---
 app = Flask(__name__)
 app.config.from_object(Config)
+CORS(app)
 
 db.init_app(app)
 api = Api(app, 

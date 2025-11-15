@@ -3,6 +3,7 @@
 from flask import Flask, request
 from flask_restx import Api, Resource, fields
 from decimal import Decimal
+from flask_cors import CORS
 
 # Import dari file kita sendiri
 from config import Config
@@ -11,6 +12,7 @@ from models import db, Wallet
 # --- 1. INISIALISASI APLIKASI ---
 app = Flask(__name__)
 app.config.from_object(Config)
+CORS(app)
 
 db.init_app(app)
 api = Api(app, 

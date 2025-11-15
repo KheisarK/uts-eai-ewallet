@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+<h2>Login</h2>
+
+<form id="loginForm">
+    <input type="email" id="email" placeholder="Email" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <button type="submit">Login</button>
+</form>
+
+<p id="message"></p>
+
+<script type="module">
+import { loginUser } from "/js/api.js";
+
+document.getElementById("loginForm").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    try {
+        const data = await loginUser(email, password);
+        localStorage.setItem("token", data.token);
+
+        alert("Login berhasil!");
+        window.location.href = "dashboard.html";
+    } catch (err) {
+        document.getElementById("message").innerText = "Gagal: " + err.message;
+    }
+});
+</script>
+</body>
+</html>

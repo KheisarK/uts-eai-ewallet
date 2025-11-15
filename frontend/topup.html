@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>Top Up</title></head>
+<body>
+<h2>Top Up Saldo</h2>
+
+<input id="amount" placeholder="Amount" type="number"><br><br>
+<button onclick="doTopup()">Topup</button><br><br>
+
+<a href="dashboard.html">Kembali</a>
+
+<script src="js/api.js"></script>
+<script>
+async function doTopup(){
+    const token = localStorage.getItem("token");
+    if (!token) return location.href="login.html";
+
+    const amt = Number(amount.value);
+    if (amt <= 0) return alert("Jumlah tidak valid");
+
+    try {
+        await createTransaction(token, "SELF", amt);
+        alert("Topup berhasil!");
+        window.location="dashboard.html";
+    } catch(err){
+        alert("Gagal: " + err.message);
+    }
+}
+</script>
+</body>
+</html>
