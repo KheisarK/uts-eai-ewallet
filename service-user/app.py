@@ -85,7 +85,7 @@ class UserRegister(Resource):
             # --- Memanggil Service-Wallet ---
             # Kita aktifkan TODO ini
             try:
-                wallet_url = f"{app.config['WALLET_SERVICE_URL']}/internal"
+                wallet_url = f"{app.config['WALLET_SERVICE_URL']}/internal/wallets"
                 wallet_payload = {'user_id': new_user.id}
                 response = requests.post(wallet_url, json=wallet_payload, timeout=5)
                 response.raise_for_status() # Error jika status code bukan 2xx
