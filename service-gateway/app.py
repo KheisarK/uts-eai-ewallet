@@ -20,7 +20,10 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 SERVICES = {
     "user": os.getenv("USER_SERVICE_URL", "http://localhost:3001"),
     "wallet": os.getenv("WALLET_SERVICE_URL", "http://localhost:3002"),
-    "transaction": os.getenv("TRANSACTION_SERVICE_URL", "http://localhost:3003")
+    "transaction": os.getenv("TRANSACTION_SERVICE_URL", "http://localhost:3003"),
+    # --- TAMBAHAN BARU: PAYEE ---
+    "payee": os.getenv("PAYEE_SERVICE_URL", "http://localhost:3004")
+    # -----------------------------
 }
 
 # =============================
@@ -47,7 +50,6 @@ def forward(service_name, path, method, data=None):
     if hasattr(g, 'user_claims') and g.user_claims:
         user_id = g.user_claims.get('user_id')
         if user_id:
-            # Tambahkan header X-User-Id untuk backend service
             headers['X-User-Id'] = str(user_id)
     # -------------------------
 
@@ -66,11 +68,9 @@ def forward(service_name, path, method, data=None):
         else:
             return jsonify({"error": "Method Not Allowed"}), 405
 
-        # Jika backend kirim JSON → forward JSON
         try:
             return jsonify(res.json()), res.status_code
         except ValueError:
-            # Jika bukan JSON (misal: DELETE tanpa body)
             return res.text, res.status_code, {"Content-Type": res.headers.get("Content-Type")}
 
     except requests.exceptions.ConnectionError:
@@ -84,16 +84,16 @@ def forward(service_name, path, method, data=None):
 # ROUTES
 # =============================
 
-# PUBLIC USER ROUTES (Tidak butuh token)
+# PUBLIC USER ROUTES
 @app.route("/api/users/login", methods=["POST"])
 @app.route("/api/users/register", methods=["POST"])
 def users_public():
     body = request.get_json()
-    path = request.path.replace("/api/", "")  # contoh: users/login
+    path = request.path.replace("/api/", "")
     return forward("user", path, request.method, body)
 
 
-# PROTECTED USER ROUTES (Butuh token, diteruskan ke service-user)
+# PROTECTED USER ROUTES
 @app.route("/api/users/me", methods=["GET", "PUT", "DELETE"])
 @require_jwt(optional=False)
 def users_me():
@@ -108,18 +108,10 @@ def wallets_me():
     return forward("wallet", "wallets/me", "GET")
 
 
-# --- INI ADALAH RUTE YANG ANDA BUTUHKAN UNTUK TOP UP ---
+# RUTE TOP UP
 @app.route("/api/topup", methods=["POST"])
 @require_jwt(optional=False)
 def topup_saldo():
-    """
-    Endpoint publik untuk Top Up.
-    Ini akan memanggil 2 endpoint internal di service-wallet:
-    1. GET /internal/wallets/by-user/{user_id} (untuk dapat wallet_id)
-    2. PUT /internal/wallets/{wallet_id}/balance (untuk melakukan CREDIT)
-    """
-    
-    # 1. Ambil ID user yang sedang login dari token
     user_id = g.user_claims.get('user_id')
     data = request.get_json()
     amount = data.get('amount')
@@ -127,12 +119,10 @@ def topup_saldo():
     if not amount or float(amount) <= 0:
         return jsonify({"message": "Jumlah Top Up tidak valid"}), 400
 
-    # 2. Panggil internal endpoint service-wallet untuk mendapatkan ID wallet user
     wallet_url = f"{SERVICES['wallet']}/internal/wallets/by-user/{user_id}"
     try:
-        # Kita tidak perlu token untuk panggil internal, karena asumsinya internal network
         wallet_res = requests.get(wallet_url, timeout=5)
-        wallet_res.raise_for_status() # Cek jika user punya wallet (status 200)
+        wallet_res.raise_for_status() 
         wallet_id = wallet_res.json().get('id')
         
         if not wallet_id:
@@ -145,7 +135,6 @@ def topup_saldo():
     except requests.exceptions.ConnectionError:
         return jsonify({"message": "Wallet Service tidak terjangkau (saat GET)"}), 503
 
-    # 3. Lakukan kredit saldo (PUT ke internal balance endpoint)
     balance_payload = {
         "type": "credit",
         "amount": amount
@@ -154,19 +143,15 @@ def topup_saldo():
     
     try:
         balance_res = requests.put(balance_url, json=balance_payload, timeout=5)
-        balance_res.raise_for_status() # Cek jika update berhasil (status 200)
-        
-        # Kembalikan respon sukses dari service-wallet
+        balance_res.raise_for_status() 
         return jsonify(balance_res.json()), balance_res.status_code
         
     except requests.exceptions.RequestException as e:
-        # Tangani error jika gagal (misal: saldo tidak cukup, service mati)
         print(f"Error saat update balance: {e}")
         try:
             return jsonify(e.response.json()), e.response.status_code
         except:
             return jsonify({"message": f"Gagal Top Up di Wallet Service. Error: {str(e)}"}), 500
-# --- SELESAI RUTE TOP UP ---
 
 
 # TRANSACTIONS (Publik: GET Riwayat, POST Transfer)
@@ -174,7 +159,26 @@ def topup_saldo():
 @require_jwt(optional=False)
 def transactions_collection():
     body = request.get_json() if request.method == "POST" else None
-    return forward("transaction", "transactions", request.method, body)
+    return forward("transaction", "transactions/", request.method, body) 
+
+
+# --- TAMBAHAN BARU: RUTE PAYEE ---
+# Rute ini menangani /api/payees (GET list, POST baru)
+@app.route("/api/payees", methods=["GET", "POST"])
+@require_jwt(optional=False)
+def payees_collection():
+    body = request.get_json() if request.method == "POST" else None
+    # Forward ke /payees/ (dengan slash) karena service-payee menggunakan @payee_ns.route('/')
+    return forward("payee", "payees/", request.method, body)
+
+# Rute ini menangani /api/payees/<id> (GET, PUT, DELETE spesifik)
+@app.route("/api/payees/<int:id>", methods=["GET", "PUT", "DELETE"])
+@require_jwt(optional=False)
+def payees_item(id):
+    body = request.get_json() if request.method == "PUT" else None
+    # Forward ke /payees/<id>
+    return forward("payee", f"payees/{id}", request.method, body)
+# ---------------------------------
 
 
 # =================================================================
