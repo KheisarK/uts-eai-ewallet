@@ -3,8 +3,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 
-# Buat instance ekstensi di sini TANPA app
-# Ini agar kita bisa mengimpornya ke file lain
 db = SQLAlchemy()
 bcrypt = Bcrypt()
 
@@ -15,10 +13,16 @@ class User(db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     phone_number = db.Column(db.String(20), unique=True, nullable=False)
     
+    # --- TAMBAHKAN INI ---
+    # (active, closed)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    # -----------------------
+    
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'email': self.email,
-            'phone_number': self.phone_number
+            'phone_number': self.phone_number,
+            'status': self.status # <--- Tambahkan juga di sini
         }

@@ -207,16 +207,23 @@ class MyProfile(Resource):
             db.session.rollback()
             return {'message': str(e)}, 401
 
+# ... di dalam app.py ...
 @user_ns.route('/internal/by-phone/<string:phone>')
 class UserInternalByPhone(Resource):
     def get(self, phone):
         """(INTERNAL) Mendapatkan data user berdasarkan nomor HP"""
+        
+        # --- UBAH INI ---
+        # user = User.query.filter_by(phone_number=phone).first()
+        # --- MENJADI INI ---
         user = User.query.filter_by(phone_number=phone, status='active').first()
+        
         if user:
             return user.to_dict(), 200
         else:
-            return {'message': 'User tidak ditemukan'}, 404
-
+            # Beri pesan yang jelas
+            return {'message': 'User tidak ditemukan atau akun tidak aktif'}, 404
+        
 # --- 4. BUAT TABEL & JALANKAN SERVER ---
 with app.app_context():
     # Buat tabel jika belum ada

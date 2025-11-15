@@ -2,7 +2,7 @@
 
 from flask import Flask, request
 from flask_restx import Api, Resource, fields
-from decimal import Decimal # Untuk mengelola uang (Decimal lebih akurat dari float)
+from decimal import Decimal
 
 # Import dari file kita sendiri
 from config import Config
@@ -19,15 +19,17 @@ api = Api(app,
           description='Layanan untuk mengelola Dompet dan Saldo.')
 
 # --- 2. MODEL API (Flask-RESTX) ---
-wallet_ns = api.namespace('wallets', description='Operasi Dompet (Publik, butuh Token)')
-internal_ns = api.namespace('internal', description='Operasi Dompet (Internal, antar service)')
+# Namespace dipisah antara Publik (Frontend) dan Internal (Antar Service)
+wallets_ns = api.namespace('wallets', description='Operasi Dompet Publik (Butuh Token)')
+internal_ns = api.namespace('internal', description='Operasi Dompet Internal (Antar Service)')
 
 # Model untuk output (menampilkan saldo)
 wallet_model = api.model('Wallet', {
-    'id': fields.Integer(description='ID Dompet'),
-    'user_id': fields.Integer(description='ID User Pemilik'),
-    'balance': fields.String(description='Saldo dompet (format string)'),
-    'label': fields.String(description='Label dompet')
+    'id': fields.Integer,
+    'user_id': fields.Integer,
+    'balance': fields.String,
+    'label': fields.String,
+    'status': fields.String
 })
 
 # Model untuk input (membuat dompet baru, internal)
@@ -35,14 +37,9 @@ internal_wallet_input = api.model('InternalWalletInput', {
     'user_id': fields.Integer(required=True, description='ID User dari service-user')
 })
 
-# Model untuk input (update label dompet, publik)
-wallet_update_input = api.model('WalletUpdateInput', {
-    'label': fields.String(required=True, description='Label dompet baru')
-})
-
 # Model untuk input (debit/kredit, internal)
 balance_update_input = api.model('BalanceUpdateInput', {
-    'type': fields.String(required=True, description='Tipe transaksi (debit/credit)'),
+    'type': fields.String(required=True, enum=['debit', 'credit']),
     'amount': fields.Float(required=True, description='Jumlah uang')
 })
 
@@ -56,36 +53,21 @@ def get_user_id_from_header():
     return int(user_id)
 
 # --- 4. ENDPOINTS PUBLIK (Butuh Token, via API Gateway) ---
-
-@wallet_ns.route('/me')
+@wallets_ns.route('/me')
 class MyWallet(Resource):
-    @wallet_ns.doc('get_my_wallet', security='apiKey')
-    @wallet_ns.marshal_with(wallet_model)
+    @wallets_ns.doc('get_my_wallet', security='apiKey')
+    @wallets_ns.marshal_with(wallet_model)
     def get(self):
         """(R)EAD: Mendapatkan info dompet dan saldo saya"""
         user_id = get_user_id_from_header()
-        wallet = Wallet.query.filter_by(user_id=user_id).first()
+        wallet = Wallet.query.filter_by(user_id=user_id, status='active').first()
         if not wallet:
-            api.abort(404, 'Dompet tidak ditemukan untuk user ini.')
-        return wallet
-        
-    @wallet_ns.doc('update_my_wallet', security='apiKey')
-    @wallet_ns.expect(wallet_update_input)
-    @wallet_ns.marshal_with(wallet_model)
-    def put(self):
-        """(U)PDATE: Memperbarui label dompet saya"""
-        user_id = get_user_id_from_header()
-        wallet = Wallet.query.filter_by(user_id=user_id).first()
-        if not wallet:
-            api.abort(404, 'Dompet tidak ditemukan.')
-            
-        data = api.payload
-        wallet.label = data['label']
-        db.session.commit()
-        return wallet
+            api.abort(404, 'Dompet aktif tidak ditemukan untuk user ini.')
+        return wallet.to_dict()
 
 # --- 5. ENDPOINTS INTERNAL (Hanya untuk Service Lain) ---
 
+# Endpoint ini akan dipanggil oleh service-user saat registrasi
 @internal_ns.route('/wallets')
 class InternalWalletCreate(Resource):
     @internal_ns.doc('internal_create_wallet')
@@ -96,27 +78,27 @@ class InternalWalletCreate(Resource):
         data = api.payload
         user_id = data['user_id']
         
-        # Cek jika dompet sudah ada
         if Wallet.query.filter_by(user_id=user_id).first():
             api.abort(400, f'Dompet untuk user_id {user_id} sudah ada.')
             
-        # Buat dompet baru dengan saldo 0
-        new_wallet = Wallet(user_id=user_id, balance=0.00)
+        new_wallet = Wallet(user_id=user_id, balance=Decimal('0.00'), status='active')
         db.session.add(new_wallet)
         db.session.commit()
-        return new_wallet, 201
+        return new_wallet.to_dict(), 201
 
+# Endpoint ini akan dipanggil oleh service-transaction (nanti)
 @internal_ns.route('/wallets/by-user/<int:user_id>')
 class InternalWalletByUser(Resource):
     @internal_ns.doc('internal_get_wallet_by_user_id')
     @internal_ns.marshal_with(wallet_model)
     def get(self, user_id):
-        """(R)EAD: (INTERNAL) Mendapatkan dompet berdasarkan user_id"""
-        wallet = Wallet.query.filter_by(user_id=user_id).first()
+        """(R)EAD: (INTERNAL) Mendapatkan dompet berdasarkan user_id (aktif saja)"""
+        wallet = Wallet.query.filter_by(user_id=user_id, status='active').first()
         if not wallet:
-            api.abort(404, 'Dompet tidak ditemukan.')
-        return wallet
+            api.abort(404, 'Dompet aktif tidak ditemukan.')
+        return wallet.to_dict()
 
+# Endpoint ini akan dipanggil oleh service-transaction (nanti)
 @internal_ns.route('/wallets/<int:wallet_id>/balance')
 class InternalWalletBalance(Resource):
     @internal_ns.doc('internal_update_balance')
@@ -127,13 +109,15 @@ class InternalWalletBalance(Resource):
         wallet = Wallet.query.get(wallet_id)
         if not wallet:
             api.abort(404, 'Dompet tidak ditemukan.')
+        if wallet.status == 'closed':
+            api.abort(403, 'Dompet sudah ditutup.')
             
         data = api.payload
-        amount = Decimal(str(data['amount'])) # Konversi float ke Decimal dengan aman
+        amount = Decimal(str(data['amount'])) 
 
         if data['type'] == 'debit':
             if wallet.balance < amount:
-                api.abort(400, 'Saldo tidak mencukupi (Insufficient balance).')
+                api.abort(400, 'Saldo tidak mencukupi.')
             wallet.balance -= amount
         elif data['type'] == 'credit':
             wallet.balance += amount
@@ -141,11 +125,28 @@ class InternalWalletBalance(Resource):
             api.abort(400, 'Tipe harus "debit" atau "credit".')
             
         db.session.commit()
-        return wallet
+        return wallet.to_dict()
+
+# Endpoint ini akan dipanggil oleh service-user saat tutup akun
+@internal_ns.route('/wallets/by-user/<int:user_id>/close')
+class InternalWalletClose(Resource):
+    @internal_ns.doc('internal_close_wallet')
+    def delete(self, user_id):
+        """(D)ELETE: (INTERNAL) Menutup dompet (Soft Delete)"""
+        wallet = Wallet.query.filter_by(user_id=user_id).first()
+        if not wallet:
+            api.abort(404, 'Dompet tidak ditemukan.')
+        
+        # Logika Bisnis: Hanya boleh tutup akun jika saldo 0
+        if wallet.balance > 0:
+            api.abort(400, f'Dompet tidak bisa ditutup, sisa saldo: {wallet.balance}. Tarik saldo dulu.')
+            
+        wallet.status = 'closed'
+        db.session.commit()
+        return {'message': 'Dompet berhasil ditutup.'}, 200
 
 # --- 6. BUAT TABEL & JALANKAN SERVER ---
 with app.app_context():
-    # Ini akan membuat tabel 'wallet' di database 'db_wallets'
     db.create_all()
 
 if __name__ == '__main__':

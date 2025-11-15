@@ -1,0 +1,9 @@
+Flask
+Flask-SQLAlchemy
+Flask-RESTX
+Flask-Bcrypt
+Flask-Cors
+requests
+PyMySQL
+python-dotenv
+PyJWT
