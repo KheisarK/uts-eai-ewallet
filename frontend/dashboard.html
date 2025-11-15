@@ -1,95 +1,221 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
     <style>
+        /* Menggunakan gaya dari referensi Anda */
         body {
             font-family: Arial, sans-serif;
-            background: #f2f2f2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
+            box-sizing: border-box;
         }
-        .card {
-            max-width: 450px;
+        .dashboard-container {
             background: white;
-            padding: 20px;
-            margin: auto;
+            padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 420px;
         }
         h2 {
             text-align: center;
-            margin-bottom: 20px;
+            color: #333;
+            margin-bottom: 1.5rem;
         }
-        a {
-            display: block;
-            padding: 10px;
-            background: #007bff;
-            color: white;
-            margin-top: 10px;
+        
+        /* Gaya baru untuk dashboard */
+        .welcome-msg {
             text-align: center;
-            border-radius: 5px;
-            text-decoration: none;
+            font-size: 1.1rem;
+            color: #555;
+            margin-bottom: 1.5rem;
         }
-        a.logout {
-            background: #dc3545;
-        }
-        a:hover {
-            opacity: 0.9;
-        }
-        .label {
+        .welcome-msg span {
             font-weight: bold;
+            color: #333;
+        }
+
+        .balance-card {
+            background: #f4f7fc;
+            border: 1px solid #e0e6f3;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .balance-label {
+            display: block;
+            font-size: 0.9rem;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .balance-amount {
+            display: block;
+            font-size: 2.5rem; /* Dibuat besar */
+            font-weight: bold;
+            color: #1a2b4e;
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* 2x2 Grid */
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .action-btn {
+            display: block;
+            padding: 1rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        .action-btn:hover {
+            background: #5568d3;
+        }
+
+        .account-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+            border-top: 1px solid #eee;
+            padding-top: 1rem;
+        }
+        .account-link {
+            color: #555;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .account-link:hover {
+            text-decoration: underline;
+        }
+        .account-link.danger {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .error {
+            color: red;
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            display: none; /* Sembunyi secara default */
         }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Dashboard</h2>
+<div class="dashboard-container">
+    <h2>Dashboard E-Wallet</h2>
 
-    <p><span class="label">Nama:</span> <span id="name"></span></p>
-    <p><span class="label">Email:</span> <span id="email"></span></p>
-    <p><span class="label">Saldo Wallet:</span> Rp <span id="balance"></span></p>
+    <p class="welcome-msg">
+        Selamat datang, <span id="name">Loading...</span>!
+    </p>
 
-    <a href="wallet.html">Detail Wallet</a>
-    <a href="transactions.html">Riwayat Transaksi</a>
-    <a href="topup.html">Top Up</a>
-    <a href="transfer.html">Transfer</a>
-    <a href="profile.html">Edit Profile</a>
-    <a class="logout" href="#" id="logoutBtn">Logout</a>
+    <!-- Info Saldo dibuat menonjol -->
+    <div class="balance-card">
+        <span class="balance-label">Saldo Anda Saat Ini:</span>
+        <span class="balance-amount" id="balance">Loading...</span>
+    </div>
+
+    <!-- Menu Aksi -->
+    <div class="action-grid">
+        <a href="wallet.html" class="action-btn">Detail Wallet</a>
+        <a href="transactions.html" class="action-btn">Riwayat Transaksi</a>
+        <a href="topup.html" class="action-btn">Top Up</a>
+        <a href="transfer.html" class="action-btn">Transfer</a>
+    </div>
+
+    <!-- Info Akun Sekunder -->
+    <div class="account-actions">
+        <a href="profile.html" class="account-link">Edit Profile</a>
+        <a href="#" id="logoutBtn" class="account-link danger">Logout</a>
+    </div>
+
+    <!-- PERBAIKAN: Pesan error ditaruh di sini, bukan alert() -->
+    <p id="error-message" class="error"></p>
 </div>
 
 <script type="module">
-import { getProfile, getMyWallet } from "/js/api.js"; // file api.js di folder sama
+// Impor fungsi dari api.js
+import { getProfile, getMyWallet } from "/js/api.js";
 
+// Ambil elemen DOM
+const nameEl = document.getElementById("name");
+const balanceEl = document.getElementById("balance");
+const errorEl = document.getElementById("error-message");
+
+// Helper untuk format Rupiah
+function formatRupiah(number) {
+    if (number === null || number === undefined) return "Rp 0";
+    const num = parseFloat(number);
+    return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+    }).format(num);
+}
+
+// Fungsi utama untuk memuat data dashboard
 async function loadDashboard() {
     const token = localStorage.getItem("token");
-    if (!token) return window.location.href = "login.html";
+    if (!token) {
+        window.location.href = "login.html";
+        return;
+    }
 
     try {
-        const profile = await getProfile(token); // request ke service-user 3001
-        const wallet = await getMyWallet(token);  // request ke service-wallet 3002
+        // Panggil kedua API secara paralel untuk loading lebih cepat
+        const [profile, wallet] = await Promise.all([
+            getProfile(token),  // request ke service-user
+            getMyWallet(token) // request ke service-wallet
+        ]);
 
-        document.getElementById("name").innerText = profile.name;
-        document.getElementById("email").innerText = profile.email;
-        document.getElementById("balance").innerText = wallet.balance ?? 0;
+        // Isi data ke elemen
+        nameEl.innerText = profile.name;
+        balanceEl.innerText = formatRupiah(wallet.balance);
 
     } catch (err) {
-        console.error(err); // tampilkan error di console
-        alert("Gagal memuat dashboard. Silakan login ulang.");
-        localStorage.removeItem("token");
-        window.location.href = "login.html";
+        console.error(err); // Tampilkan error di console untuk debug
+        
+        // PERBAIKAN: Ganti alert() dengan pesan error yang lebih halus
+        errorEl.innerText = "Gagal memuat dashboard. Sesi Anda mungkin telah berakhir.";
+        errorEl.style.display = "block"; // Tampilkan pesan error
+        
+        // Hapus token dan redirect ke login setelah 3 detik
+        setTimeout(() => {
+            localStorage.removeItem("token");
+            window.location.href = "login.html";
+        }, 3000);
     }
 }
 
-document.getElementById("logoutBtn").addEventListener("click", () => {
+// Listener untuk tombol logout
+document.getElementById("logoutBtn").addEventListener("click", (e) => {
+    e.preventDefault(); // Mencegah link '#' melompat ke atas
     localStorage.removeItem("token");
     window.location.href = "login.html";
 });
 
+// Jalankan fungsi load dashboard
 loadDashboard();
 </script>
-
-
 
 </body>
 </html>

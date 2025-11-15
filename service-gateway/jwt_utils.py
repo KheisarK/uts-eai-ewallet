@@ -7,9 +7,16 @@ from flask import request, jsonify, g
 from dotenv import load_dotenv
 
 load_dotenv()
+# --- PERBAIKAN DI SINI ---
+# Gunakan nama variabel yang konsisten (JWT_SECRET_KEY)
+# Jangan gunakan default "changeme" yang berbahaya. Beri error jika tidak ada.
+JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET_KEY tidak ditemukan di file .env")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "changeme")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+# Algoritma biasanya tetap. Hardcode saja agar konsisten.
+JWT_ALGORITHM = "HS256" 
+# -------------------------
 
 def verify_jwt_token(token):
     """
@@ -19,7 +26,8 @@ def verify_jwt_token(token):
     if token.startswith("Bearer "):
         token = token.split(" ", 1)[1]
 
-    # decode will raise exceptions we can catch upstream
+    # decode akan raise exceptions kita bisa catch upstream
+    # PERBAIKAN: Pastikan 'algorithms' adalah LIST
     payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     return payload
 

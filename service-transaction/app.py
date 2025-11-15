@@ -25,7 +25,6 @@ api = Api(app,
 # --- 2. MODEL API (Flask-RESTX) ---
 trans_ns = api.namespace('transactions', description='Operasi Transaksi (Butuh Token)')
 
-# Model untuk output
 transaction_model = api.model('Transaction', {
     'id': fields.Integer,
     'sender_wallet_id': fields.Integer,
@@ -37,10 +36,8 @@ transaction_model = api.model('Transaction', {
     'created_at': fields.String
 })
 
-# Model untuk input (Transfer baru)
 transfer_input_model = api.model('TransferInput', {
-    # Kita tidak perlu ID pengirim, karena itu didapat dari Token
-    'receiver_phone_number': fields.String(required=True, description='No. HP penerima (cth: 0812...)'),
+    'receiver_phone': fields.String(required=True, description='No. HP penerima (cth: 0812...)'), 
     'amount': fields.Float(required=True, description='Jumlah uang yang dikirim'),
     'description': fields.String(description='Catatan untuk penerima')
 })
@@ -63,15 +60,14 @@ class TransactionList(Resource):
         """(R)EAD: Mendapatkan riwayat transaksi saya"""
         user_id = get_user_id_from_header()
         
-        # 1. Dapatkan dompet saya dulu (panggil service-wallet)
         try:
+            # Panggilan ini sudah benar (menggunakan /internal/)
             wallet_resp = requests.get(f"{app.config['WALLET_SERVICE_URL']}/internal/wallets/by-user/{user_id}")
             wallet_resp.raise_for_status()
             my_wallet_id = wallet_resp.json()['id']
         except requests.exceptions.RequestException as e:
             return api.abort(503, f'Tidak bisa mengambil data dompet: {e}')
             
-        # 2. Cari transaksi di DB ini berdasarkan ID dompet saya
         transactions = Transaction.query.filter(
             (Transaction.sender_wallet_id == my_wallet_id) | 
             (Transaction.receiver_wallet_id == my_wallet_id)
@@ -87,18 +83,15 @@ class TransactionList(Resource):
         sender_user_id = get_user_id_from_header()
         data = api.payload
         amount_to_transfer = Decimal(str(data['amount']))
-        receiver_phone = data['receiver_phone_number']
+        receiver_phone = data['receiver_phone']
         
-        # Validasi dasar
         if amount_to_transfer <= 0:
             api.abort(400, 'Jumlah transfer harus positif.')
             
         try:
-            # --- ALUR KOMUNIKASI MICROSERVICE ---
-            
-            # 1. Dapatkan info dompet SAYA (PENGIRIM) (Panggil service-wallet)
+            # 1. Dapatkan info dompet SAYA (PENGIRIM)
             wallet_sender_resp = requests.get(f"{app.config['WALLET_SERVICE_URL']}/internal/wallets/by-user/{sender_user_id}")
-            wallet_sender_resp.raise_for_status() # Error jika 404/500
+            wallet_sender_resp.raise_for_status() 
             sender_wallet = wallet_sender_resp.json()
             sender_wallet_id = sender_wallet['id']
             sender_balance = Decimal(sender_wallet['balance'])
@@ -107,33 +100,34 @@ class TransactionList(Resource):
             if sender_balance < amount_to_transfer:
                 api.abort(400, 'Saldo tidak mencukupi.')
 
+            # --- PERBAIKAN DI BARIS BERIKUTNYA ---
             # 3. Dapatkan info user PENERIMA (Panggil service-user)
-            user_receiver_resp = requests.get(f"{app.config['USER_SERVICE_URL']}/internal/by-phone/{receiver_phone}")
+            # Tambahkan prefix /users/
+            user_receiver_resp = requests.get(f"{app.config['USER_SERVICE_URL']}/users/internal/by-phone/{receiver_phone}")
             user_receiver_resp.raise_for_status()
             receiver_user_id = user_receiver_resp.json()['id']
             
-            # Cek jika kirim ke diri sendiri
             if sender_user_id == receiver_user_id:
                 api.abort(400, 'Tidak bisa transfer ke diri sendiri.')
 
-            # 4. Dapatkan info dompet PENERIMA (Panggil service-wallet)
+            # 4. Dapatkan info dompet PENERIMA
             wallet_receiver_resp = requests.get(f"{app.config['WALLET_SERVICE_URL']}/internal/wallets/by-user/{receiver_user_id}")
             wallet_receiver_resp.raise_for_status()
             receiver_wallet_id = wallet_receiver_resp.json()['id']
 
-            # --- EKSEKUSI (Jika semua validasi lolos) ---
+            # --- EKSEKUSI ---
             
-            # 5. DEBIT Saldo Pengirim (Panggil service-wallet)
+            # 5. DEBIT Saldo Pengirim
             debit_payload = {'type': 'debit', 'amount': data['amount']}
             debit_resp = requests.put(f"{app.config['WALLET_SERVICE_URL']}/internal/wallets/{sender_wallet_id}/balance", json=debit_payload)
             debit_resp.raise_for_status()
 
-            # 6. CREDIT Saldo Penerima (Panggil service-wallet)
+            # 6. CREDIT Saldo Penerima
             credit_payload = {'type': 'credit', 'amount': data['amount']}
             credit_resp = requests.put(f"{app.config['WALLET_SERVICE_URL']}/internal/wallets/{receiver_wallet_id}/balance", json=credit_payload)
             credit_resp.raise_for_status()
             
-            # 7. CATAT Transaksi (Simpan ke DB service-transaction)
+            # 7. CATAT Transaksi
             new_transaction = Transaction(
                 sender_wallet_id=sender_wallet_id,
                 receiver_wallet_id=receiver_wallet_id,
@@ -147,14 +141,21 @@ class TransactionList(Resource):
             
             return new_transaction.to_dict(), 201
 
+        # Error Handler yang sudah Robust (Bagus!)
         except requests.exceptions.HTTPError as e:
-            # Jika salah satu API call gagal (misal: user not found 404, saldo tidak cukup 400)
-            return api.abort(e.response.status_code, e.response.json().get('message', 'Error eksternal'))
+            status_code = e.response.status_code if e.response is not None else 500
+            error_message = f"Error saat memanggil service lain (Status {status_code})."
+            
+            try:
+                error_message = e.response.json().get('message', 'Error internal di service lain.')
+            except requests.exceptions.JSONDecodeError:
+                print(f"Error non-JSON dari service lain: {e.response.text[:200]}...")
+            
+            return api.abort(status_code, error_message)
+
         except requests.exceptions.RequestException as e:
-            # Jika service lain mati (connection error)
             return api.abort(503, f'Layanan eksternal tidak tersedia: {e}')
         except Exception as e:
-            # Error internal di service ini
             db.session.rollback()
             return api.abort(500, f'Terjadi error internal: {e}')
 

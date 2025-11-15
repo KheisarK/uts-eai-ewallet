@@ -1,36 +1,157 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
+    <style>
+        /* Menggunakan gaya dari referensi & dashboard */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .login-container {
+            background: white;
+            padding: 2.5rem; /* Diberi padding lebih */
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Style untuk form dari referensi Anda */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 0.85rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            box-sizing: border-box; /* Penting agar padding tidak merusak layout */
+        }
+        button {
+            width: 100%;
+            padding: 0.85rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        
+        /* Style untuk pesan loading/error */
+        #message {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        #message.error {
+            color: #dc3545; /* Merah */
+            font-weight: bold;
+        }
+        #message.loading {
+            color: #555; /* Abu-abu */
+        }
+    </style>
 </head>
 <body>
-<h2>Login</h2>
 
-<form id="loginForm">
-    <input type="email" id="email" placeholder="Email" required><br>
-    <input type="password" id="password" placeholder="Password" required><br>
-    <button type="submit">Login</button>
-</form>
+<div class="login-container">
+    <h2>Login Akun</h2>
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="phone">Nomor HP</label>
+            <input type="text" id="phone" placeholder="Contoh: 0812..." required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="••••••••" required>
+        </div>
+        
+        <button type="submit">Login</button>
+    </form>
 
-<p id="message"></p>
+    <p id="message"></p>
+    
+    <p style="text-align: center; margin-top: 1.5rem; color: #555;">
+        Belum punya akun? <a href="register.html">Daftar di sini</a>
+    </p>
+</div>
+
 
 <script type="module">
+// Impor fungsi login dari api.js (pastikan path /js/api.js sudah benar)
 import { loginUser } from "/js/api.js";
 
-document.getElementById("loginForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
+// Ambil elemen dari DOM
+const loginForm = document.getElementById("loginForm");
+const phoneEl = document.getElementById("phone");
+const passwordEl = document.getElementById("password");
+const messageEl = document.getElementById("message");
+const loginButton = loginForm.querySelector("button");
 
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
+loginForm.addEventListener("submit", async function(e) {
+    e.preventDefault(); // Mencegah halaman reload
+
+    // Ambil nilai
+    const phone = phoneEl.value;
+    const password = passwordEl.value;
+
+    // Nonaktifkan tombol & beri feedback
+    loginButton.disabled = true;
+    loginButton.innerText = "Loading...";
+    messageEl.innerText = "Mencoba login...";
+    messageEl.className = "loading";
 
     try {
-        const data = await loginUser(email, password);
+        // Panggil loginUser dengan 'phone' dan 'password'
+        const data = await loginUser(phone, password);
+
+        // Simpan token ke localStorage
         localStorage.setItem("token", data.token);
 
-        alert("Login berhasil!");
+        // Hapus pesan error/loading
+        messageEl.innerText = "";
+        
+        // Langsung redirect ke dashboard
         window.location.href = "dashboard.html";
+
     } catch (err) {
-        document.getElementById("message").innerText = "Gagal: " + err.message;
+        // Tampilkan error jika login gagal (misal: password salah)
+        messageEl.innerText = "Gagal: " + err.message;
+        messageEl.className = "error";
+        
+        // Aktifkan kembali tombol
+        loginButton.disabled = false;
+        loginButton.innerText = "Login";
     }
 });
 </script>

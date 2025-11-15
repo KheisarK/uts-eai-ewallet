@@ -1,28 +1,190 @@
 <!DOCTYPE html>
-<html>
-<head><title>Transfer Saldo</title></head>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transfer Saldo</title>
+    <style>
+        /* Menggunakan gaya konsisten dari dashboard & login */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .transfer-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 0.85rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 0.85rem;
+            background: #667eea; /* Biru (warna primer) untuk transfer */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #555;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        #message { text-align: center; margin-top: 1rem; font-weight: bold; }
+        #message.error { color: #dc3545; }
+        #message.success { color: #28a745; }
+        #message.loading { color: #555; }
+    </style>
+</head>
 <body>
-<h2>Transfer Saldo</h2>
 
-<input id="wallet_to" placeholder="ID Wallet Tujuan"><br><br>
-<input id="amount" type="number" placeholder="Jumlah"><br><br>
+<div class="transfer-container">
+    <h2>Transfer Saldo</h2>
+    
+    <!-- PERBAIKAN: Gunakan form dan addEventListener -->
+    <form id="transferForm">
+        <div class="form-group">
+            <label for="receiver_phone">Nomor HP Tujuan</label>
+            <!-- 
+              PERBAIKAN:
+              - Minta 'Nomor HP' (phone), bukan 'ID Wallet' (wallet_to)
+              - Ini agar sesuai dengan api.js -> createTransaction(token, receiver_phone, amount)
+            -->
+            <input id="receiver_phone" placeholder="Contoh: 0812..." type="text" required>
+        </div>
+        <div class="form-group">
+            <label for="amount">Jumlah Transfer (Rp)</label>
+            <input id="amount" placeholder="Contoh: 50000" type="number" required>
+        </div>
+        
+        <button type="submit" id="transferBtn">Kirim</button>
+    </form>
+    
+    <p id="message"></p>
+    
+    <a href="dashboard.html" class="back-link">Kembali</a>
+</div>
 
-<button onclick="transfer()">Kirim</button><br><br>
+<script type="module">
+// --- PERBAIKAN KRUSIAL: Impor fungsi dan ganti script ---
 
-<a href="dashboard.html">Kembali</a>
+// 1. Impor fungsi yang Anda butuhkan
+import { createTransaction } from "/js/api.js"; 
 
-<script src="js/api.js"></script>
-<script>
-async function transfer(){
+// 2. Ambil elemen DOM
+const transferForm = document.getElementById("transferForm");
+const phoneEl = document.getElementById("receiver_phone");
+const amountEl = document.getElementById("amount");
+const messageEl = document.getElementById("message");
+const transferBtn = document.getElementById("transferBtn");
+
+// 3. Gunakan addEventListener (lebih bersih dari onclick)
+transferForm.addEventListener("submit", async function(e) {
+    e.preventDefault(); // Mencegah form reload halaman
+
     const token = localStorage.getItem("token");
+    if (!token) {
+        window.location.href = "login.html";
+        return;
+    }
+
+    // Ambil nilai dari input yang sudah diperbaiki
+    const receiver_phone = phoneEl.value;
+    const amount = Number(amountEl.value);
+
+    // Validasi input
+    if (amount <= 0 || !amount) {
+        messageEl.innerText = "Jumlah transfer tidak valid.";
+        messageEl.className = "error";
+        return;
+    }
+    if (!receiver_phone) {
+        messageEl.innerText = "Nomor HP tujuan harus diisi.";
+        messageEl.className = "error";
+        return;
+    }
+
+    // Set UI ke mode loading
+    transferBtn.disabled = true;
+    transferBtn.innerText = "Mengirim...";
+    messageEl.innerText = "Memproses transfer...";
+    messageEl.className = "loading";
 
     try {
-        await createTransaction(token, wallet_to.value, Number(amount.value));
-        alert("Transfer berhasil!");
-    } catch(err){
-        alert("Gagal: " + err.message);
+        // 4. Panggil fungsi 'createTransaction' yang sudah di-impor
+        await createTransaction(token, receiver_phone, amount);
+        
+        messageEl.innerText = "Transfer berhasil!";
+        messageEl.className = "success";
+        
+        // Redirect ke dashboard setelah 2 detik
+        setTimeout(() => {
+            window.location.href = "dashboard.html";
+        }, 2000);
+
+    } catch(err) {
+        // 5. Ganti alert() dengan penanganan error yang lebih baik
+        transferBtn.disabled = false;
+        transferBtn.innerText = "Kirim";
+        
+        const msg = err.message.toLowerCase().includes('token') 
+            ? "Sesi kedaluwarsa. Silakan login ulang." 
+            : `Gagal: ${err.message}`;
+            
+        messageEl.innerText = msg;
+        messageEl.className = "error";
+        
+        // Jika token error, redirect
+        if (msg.includes('Sesi kedaluwarsa')) {
+            setTimeout(() => {
+                localStorage.removeItem("token");
+                window.location.href = "login.html";
+            }, 3000);
+        }
     }
-}
+});
 </script>
 </body>
 </html>

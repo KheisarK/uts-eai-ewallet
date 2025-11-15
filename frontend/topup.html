@@ -1,29 +1,159 @@
 <!DOCTYPE html>
-<html>
-<head><title>Top Up</title></head>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top Up Saldo</title>
+    <style>
+        /* Menggunakan gaya konsisten dari dashboard */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .topup-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 0.85rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        button {
+            width: 100%;
+            padding: 0.85rem;
+            background: #28a745; /* Hijau untuk Top Up */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #1e7e34;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #555;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        #message { color: red; text-align: center; margin-top: 1rem; font-weight: bold; }
+        .loading { color: #555; }
+    </style>
+</head>
 <body>
-<h2>Top Up Saldo</h2>
 
-<input id="amount" placeholder="Amount" type="number"><br><br>
-<button onclick="doTopup()">Topup</button><br><br>
+<div class="topup-container">
+    <h2>Top Up Saldo</h2>
+    
+    <div class="form-group">
+        <label for="amount">Jumlah Top Up (Rp)</label>
+        <input id="amount" placeholder="Contoh: 50000" type="number" required>
+    </div>
+    
+    <button onclick="doTopup()" id="topupBtn">Topup</button>
+    
+    <p id="message"></p>
+    
+    <a href="dashboard.html" class="back-link">Kembali</a>
+</div>
 
-<a href="dashboard.html">Kembali</a>
+<script type="module">
+// --- PERBAIKAN KRUSIAL: Impor fungsi dan ganti script ---
 
-<script src="js/api.js"></script>
-<script>
-async function doTopup(){
+// Impor fungsi yang dibutuhkan (Asumsi: Anda akan menambahkan topupWallet ke api.js)
+import { getProfile, topupWallet } from "/js/api.js"; 
+
+// Ambil elemen DOM
+const amountEl = document.getElementById("amount");
+const messageEl = document.getElementById("message");
+const topupBtn = document.getElementById("topupBtn");
+
+// Fungsi helper untuk menonaktifkan/mengaktifkan UI
+function setUIState(loading, message = "") {
+    topupBtn.disabled = loading;
+    topupBtn.innerText = loading ? "Memproses..." : "Topup";
+    messageEl.innerText = message;
+    messageEl.className = loading ? 'loading' : (message ? 'error' : '');
+}
+
+window.doTopup = async function(){
     const token = localStorage.getItem("token");
-    if (!token) return location.href="login.html";
+    if (!token) return window.location.href = "login.html";
 
-    const amt = Number(amount.value);
-    if (amt <= 0) return alert("Jumlah tidak valid");
+    const amount = amountEl.value;
+    const amt = Number(amount);
+    
+    if (amt <= 0 || !amt) {
+        return setUIState(false, "Jumlah tidak valid.");
+    }
+    
+    // Nonaktifkan tombol saat memproses
+    setUIState(true, "Memproses Top Up...");
 
     try {
-        await createTransaction(token, "SELF", amt);
-        alert("Topup berhasil!");
-        window.location="dashboard.html";
+        // --- LOGIKA TOPUP ---
+        // Top Up adalah CREDIT ke Wallet ID sendiri.
+        // Asumsi: topupWallet() adalah fungsi yang Anda buat di Gateway untuk CREDIT ke wallet ID user dari token.
+        
+        await topupWallet(token, amt);
+        
+        setUIState(false, "Top Up berhasil!");
+        
+        // Redirect setelah sukses
+        setTimeout(() => {
+            window.location.href = "dashboard.html";
+        }, 1000);
+
     } catch(err){
-        alert("Gagal: " + err.message);
+        const msg = err.message.toLowerCase().includes('token') 
+            ? "Sesi kedaluwarsa. Silakan login ulang." 
+            : `Gagal: ${err.message}`;
+            
+        setUIState(false, msg);
+        
+        if (msg.includes('Sesi kedaluwarsa')) {
+            setTimeout(() => {
+                localStorage.removeItem("token");
+                window.location.href = "login.html";
+            }, 1500);
+        }
     }
 }
 </script>

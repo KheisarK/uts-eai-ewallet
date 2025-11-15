@@ -1,26 +1,180 @@
 <!DOCTYPE html>
-<html>
-<head><title>Wallet Saya</title></head>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Saya</title>
+    <style>
+        /* Gaya konsisten dari login/dashboard */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .wallet-container {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px; /* Lebar maksimum seperti login/dashboard */
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Gaya khusus untuk info wallet */
+        .wallet-info {
+            background-color: #f4f7fc;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 1.5rem;
+        }
+        .wallet-info p {
+            font-size: 1.1em;
+            color: #555;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .wallet-info .label {
+            font-weight: normal;
+            color: #333;
+        }
+        .wallet-info .data {
+            font-weight: bold;
+            color: #0056b3;
+            word-break: break-all;
+        }
+        /* Buat saldo lebih menonjol */
+        .wallet-info p.saldo {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #1a2b4e;
+        }
+        .wallet-info .data.balance {
+            color: #1a2b4e;
+        }
+
+        /* Style untuk pesan error */
+        #message {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            display: none; 
+        }
+        #message.error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        /* Link kembali */
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #555;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
 <body>
-<h2>Wallet Saya</h2>
 
-<p>ID Wallet: <span id="id"></span></p>
-<p>Balance: <span id="balance"></span></p>
+<div class="wallet-container">
+    <h2>Detail Wallet</h2>
 
-<a href="dashboard.html">Kembali</a>
+    <div class="wallet-info">
+        <p>
+            <span class="label">ID Wallet:</span>
+            <span class="data" id="wallet-id">Loading...</span>
+        </p>
+        <hr style="border: 0; border-top: 1px solid #e0e0e0;">
+        <p class="saldo">
+            <span class="label">Saldo Saat Ini:</span>
+            <span class="data balance" id="wallet-balance">Loading...</span>
+        </p>
+    </div>
 
-<script src="js/api.js"></script>
-<script>
-async function loadWallet(){
-    const token = localStorage.getItem("token");
-    if (!token) return location.href="login.html";
+    <p id="message"></p>
 
-    const wallet = await getMyWallet(token);
-    id.innerText = wallet.id;
-    balance.innerText = wallet.balance;
-}
+    <a href="dashboard.html" class="back-link">Kembali ke Dashboard</a>
+</div>
 
-loadWallet();
+    
+<script type="module">
+    // 1. Import fungsi yang Anda butuhkan dari api.js
+    import { getMyWallet } from "/js/api.js";
+
+    // 2. Ambil elemen DOM dengan benar
+    const idSpan = document.getElementById("wallet-id");
+    const balanceSpan = document.getElementById("wallet-balance");
+    const messageEl = document.getElementById("message"); // <-- Elemen pesan error
+
+    // Fungsi untuk format saldo ke Rupiah
+    function formatRupiah(number) {
+        const num = parseFloat(number);
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(num);
+    }
+
+    // 3. Buat fungsi async untuk memuat data
+    async function loadWallet() {
+        const token = localStorage.getItem("token");
+        if (!token) {
+            window.location.href = "login.html";
+            return;
+        }
+
+        try {
+            // 4. Panggil fungsi yang sudah di-import
+            const wallet = await getMyWallet(token);
+
+            // 5. Isi data ke elemen span
+            idSpan.innerText = wallet.id;
+            balanceSpan.innerText = formatRupiah(wallet.balance);
+
+        } catch (err) {
+            // 6. Ganti Error Handling (hapus alert)
+            console.error("Gagal memuat wallet:", err);
+            
+            // Atur pesan error
+            messageEl.innerText = "Gagal memuat data: " + err.message;
+            messageEl.className = "error";
+            messageEl.style.display = "block"; 
+            
+            idSpan.innerText = "Error";
+            balanceSpan.innerText = "Error";
+            
+            // Jika error karena token (expired/invalid), tendang ke login setelah 3 detik
+            if (err.message.toLowerCase().includes("token") || err.message.toLowerCase().includes("unauthorized")) {
+                messageEl.innerText = "Sesi Anda telah berakhir. Silakan login kembali.";
+                setTimeout(() => {
+                    localStorage.removeItem("token");
+                    window.location.href = "login.html";
+                }, 3000);
+            }
+        }
+    }
+
+    // Jalankan fungsi saat halaman dimuat
+    loadWallet();
 </script>
 </body>
 </html>

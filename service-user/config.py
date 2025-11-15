@@ -8,7 +8,7 @@ load_dotenv()
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL_USERS', 'mysql+pymysql://root:@localhost:3306/db_users')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SECRET_KEY = os.getenv('SECRET_KEY', 'ini-rahasia-banget-dan-harus-diganti-nanti')
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'default-secret-key-ganti-ini')
     
     # --- TAMBAHKAN INI ---
     # Kita asumsikan service-wallet akan berjalan di port 3002
